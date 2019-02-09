@@ -1,0 +1,3 @@
+[submodule "python-artnet"]
+	path = python-artnet
+	url = git@github.com:spble/python-artnet.git
