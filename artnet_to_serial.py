@@ -1,4 +1,5 @@
 import socket
+import sys
 from artnet import packet
 import serial
 from serial.tools import list_ports
@@ -8,9 +9,13 @@ import queue
 import itertools
 import time
 
-UDP_IP = "192.168.169.105"
+UDP_IP = "0.0.0.0"
 UDP_PORT = 6454
-SERIAL_DEVICE = next(serial.tools.list_ports.grep("ACM")).device
+try:
+    SERIAL_DEVICE = next(serial.tools.list_ports.grep("ACM")).device
+except StopIteration:
+    print("No serial devices found.")
+    sys.exit(1)
 BAUD_RATE = 500000
 
 
@@ -141,6 +146,7 @@ if __name__ == '__main__':
     q = queue.Queue()
 
     w = Writer(q)
+    w.daemon = True
 
     if PLAY_TEST_PATTERN:
         w.write_test(TEST_RED)
@@ -151,6 +157,16 @@ if __name__ == '__main__':
         time.sleep(0.5)
 
     l = Listener(q)
-    l.start()
-    w.start()
+    l.daemon = True
+
+    try:
+        l.start()
+        w.start()
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        l.running = False
+        w.running = False
+        print("KeyboardInterrupt: Shutting down.")
+        sys.exit(0)
 
