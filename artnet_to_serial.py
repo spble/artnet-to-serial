@@ -22,18 +22,30 @@ BAUD_RATE = 500000
 
 DEBUG = True
 
-START_UNIVERSE = 1
-MAX_UNIVERSES = 32
-UNIVERSE_SIZE = 450
-NUM_PIXELS = 4800
-SKIP_UNIVERSE = [254] * UNIVERSE_SIZE
+SKIP_BYTE = 254
+RESET_BYTE = 255
+
+
+START_UNIVERSE = 0
+MAX_UNIVERSES = 17
+
+IS_MATRIX = False
 SEND_INCOMPLETE_FRAMES = False
+
+if IS_MATRIX:
+    # Matrix Screen (All strips equal)
+    UNIVERSE_SIZE_LED = [150] * MAX_UNIVERSES
+else:
+    UNIVERSE_SIZE_LED = [169, 160, 166, 120, 156, 140, 110, 118, 120, 120, 123, 122, 122, 121, 125, 167, 52]
+
+UNIVERSE_SIZE_CHAN = [x*3 for x in UNIVERSE_SIZE_LED]
+NUM_PIXELS = sum(UNIVERSE_SIZE_LED)
+
 
 PLAY_TEST_PATTERN = True
 TEST_RED = [30,0,0] * NUM_PIXELS
 TEST_GREEN = [0,30,0] * NUM_PIXELS
 TEST_BLUE = [0,0,30] * NUM_PIXELS
-
 
 
 class Listener(threading.Thread):
@@ -50,10 +62,15 @@ class Listener(threading.Thread):
         self.sock.bind((address, port))
         self.sock.settimeout(0.0)
         self.running = True
-        print("Listening on %s:%s" % (address, port))
-
         self.clear_universes()
 
+        print("Listening on %s:%s" % (address, port))
+
+
+    def clear_universes(self):
+        self.universes = [None,] * MAX_UNIVERSES
+        self.universes_received = 0
+        self.universes_present = 0
 
     def run(self):
         while(self.running):
@@ -71,7 +88,7 @@ class Listener(threading.Thread):
             return None, None
 
     def handle_artnet(self, pkt):
-        self.universes[pkt.universe] = pkt.framedata[:UNIVERSE_SIZE]
+        self.universes[pkt.universe] = pkt.framedata[:UNIVERSE_SIZE_CHAN[pkt.universe]]
         self.universes_received += 1
         self.universes_present |= (1 << pkt.universe)
         # Do it every N universes received
@@ -82,12 +99,13 @@ class Listener(threading.Thread):
             self.clear_universes()
 
     def send_current_frame(self):
-        # Get rid of any values of 254 or 255, as they have special meaning
         missed_universes = ['.'] * MAX_UNIVERSES
         incomplete_frame = False
+        # Get rid of any values of 254 or 255, as they have special meaning
         for index, universe in enumerate(self.universes):
             if universe is None:
-                self.universes[index] = SKIP_UNIVERSE
+                self.universes[index] = [SKIP_BYTE] * UNIVERSE_SIZE_CHAN[index]
+
                 missed_universes[index] = 'X'
                 incomplete_frame = True
                 #print("Missed universe %d" % (index,))
@@ -106,11 +124,6 @@ class Listener(threading.Thread):
         else:
             if DEBUG:
                 print("Skipped frame. (q: %d)\t%s" % (self.queue.qsize(),"".join(missed_universes)))
-
-    def clear_universes(self):
-        self.universes = [None,] * MAX_UNIVERSES
-        self.universes_received = 0
-        self.universes_present = 0
 
 
 class Writer(threading.Thread):
